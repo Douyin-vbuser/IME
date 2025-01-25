@@ -1,0 +1,78 @@
+﻿name: Build IME Controller
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    permissions: write-all
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+
+      - name: Install Dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxkbfile-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifacts
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cp build/Release/*.dll artifacts/
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+            find build -name "*.so" -exec cp {} artifacts/ \;
+          else
+            find build -name "*.dylib" -exec cp {} artifacts/ \;
+          fi
+          echo "Contents of artifacts directory:"
+          ls -R artifacts/
+        shell: bash
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-artifacts
+          path: artifacts/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+    
+    steps:
+      - name: Get current time
+        id: time
+        run: echo "::set-output name=time::$(date +%y%m%d%H%M)"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: all-artifacts/**/*
+          tag_name: ${{ steps.time.outputs.time }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
