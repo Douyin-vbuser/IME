@@ -43,7 +43,7 @@ if(MSVC)
     target_link_options(dda PRIVATE /LTCG)
 else()
     target_compile_options(dda PRIVATE 
-        -O3 -ffast-math -flto -funroll-loops -fno-trapping-math
+        -O3 -ffast-math -funroll-loops -fno-trapping-math
     )
     target_link_options(dda PRIVATE -flto)
 endif()
