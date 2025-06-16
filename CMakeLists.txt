@@ -36,7 +36,14 @@ else()
 endif()
 
 if(MSVC)
-    target_compile_options(dda PRIVATE /O2 /fp:fast)
+    target_compile_options(blockrenderer PRIVATE 
+        /O2 /fp:fast /arch:AVX2 /Qpar /GL
+    )
+    target_link_options(blockrenderer PRIVATE /LTCG)
 else()
-    target_compile_options(dda PRIVATE -O3 -ffast-math -march=native)
+    target_compile_options(blockrenderer PRIVATE 
+        -O3 -ffast-math -march=native -mtune=native 
+        -flto -funroll-loops -fno-trapping-math
+    )
+    target_link_options(blockrenderer PRIVATE -flto)
 endif()
