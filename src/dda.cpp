@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <immintrin.h> // AVX指令集优化
+// 移除 immintrin.h 包含
 
 #define MAX_CACHE_SIZE 2000
 #define MAX_BLOCKS_PASSED 5
