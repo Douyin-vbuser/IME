@@ -34,9 +34,9 @@ public:
         size_t operator()(const Key& k) const {
             // 优化哈希计算 - 使用位混合
             size_t h = 0;
-            h ^= (static_cast<size_t>(k.from[0]) << 32 | k.from[1];
-            h ^= (static_cast<size_t>(k.from[2]) << 16 | k.to[0];
-            h ^= (static_cast<size_t>(k.to[1]) << 32 | k.to[2];
+            h ^= (static_cast<size_t>(k.from[0]) << 32 | k.from[1]);
+            h ^= (static_cast<size_t>(k.from[2]) << 16 | k.to[0]);
+            h ^= (static_cast<size_t>(k.to[1]) << 32 | k.to[2]);
             return h;
         }
     };
