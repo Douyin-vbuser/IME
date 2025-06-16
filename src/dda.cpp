@@ -4,6 +4,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
 #include <limits>
 // 移除 immintrin.h 包含
 
