@@ -79,7 +79,6 @@ public:
 VisibilityCache visibilityCache(MAX_CACHE_SIZE);
 
 // 高度优化的DDA算法
-__attribute__((always_inline)) 
 bool checkVisibilityDDA(double fromX, double fromY, double fromZ, 
                         double toX, double toY, double toZ) {
     const double dx = toX - fromX;
