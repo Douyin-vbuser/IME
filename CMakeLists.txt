@@ -35,15 +35,18 @@ else()
     set_target_properties(dda PROPERTIES SUFFIX ".so")
 endif()
 
-# 使用通用优化选项，移除架构特定优化
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+
+# 添加更多优化选项
 if(MSVC)
-    target_compile_options(dda PRIVATE 
-        /O2 /fp:fast /Qpar /GL
+    target_compile_options(dda PRIVATE
+            /O2 /Oi /Ot /Oy /GL /Qpar /fp:fast
+            /arch:AVX2
     )
-    target_link_options(dda PRIVATE /LTCG)
 else()
-    target_compile_options(dda PRIVATE 
-        -O3 -ffast-math -funroll-loops -fno-trapping-math
+    target_compile_options(dda PRIVATE
+            -O3 -march=native -ffast-math
+            -ftree-vectorize -fomit-frame-pointer
+            -funroll-loops -fno-stack-protector
     )
-    target_link_options(dda PRIVATE -flto)
 endif()
