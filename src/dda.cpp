@@ -6,6 +6,7 @@
 #include <memory>
 #include <array>
 #include <mutex>
+#include <climits>  // 添加这个头文件
 
 #ifdef __SSE4_1__
 #include <smmintrin.h>
@@ -172,7 +173,8 @@ public:
 
         // 扩展边界到2的幂
         int size = 1;
-        int maxDim = std::max({maxX - minX, maxY - minY, maxZ - minZ});
+        // 修复std::max初始化列表问题
+        int maxDim = std::max(maxX - minX, std::max(maxY - minY, maxZ - minZ));
         while (size < maxDim) size <<= 1;
 
         maxX = minX + size;
