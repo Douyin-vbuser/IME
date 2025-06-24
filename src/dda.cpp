@@ -39,7 +39,7 @@ private:
     size_t capacity;
 
 public:
-    VisibilityCache(size_t cap) : capacity(cap) {
+    explicit VisibilityCache(size_t cap) : capacity(cap) {
         cacheMap.reserve(cap);
         lruMap.reserve(cap);
     }
@@ -47,9 +47,12 @@ public:
     bool get(const Key& key, bool& result) {
         auto it = cacheMap.find(key);
         if (it != cacheMap.end()) {
-            lruList.erase(lruMap[key]);
-            lruList.push_front(key);
-            lruMap[key] = lruList.begin();
+            auto lruIt = lruMap.find(key);
+            if (lruIt != lruMap.end()) {
+                lruList.erase(lruIt->second);
+                lruList.push_front(key);
+                lruIt->second = lruList.begin();
+            }
             result = it->second;
             return true;
         }
@@ -57,14 +60,14 @@ public:
     }
 
     void put(const Key& key, bool value) {
-        if (cacheMap.size() >= capacity) {
+        if (cacheMap.size() >= capacity && !lruList.empty()) {
             const Key& oldKey = lruList.back();
             cacheMap.erase(oldKey);
             lruMap.erase(oldKey);
             lruList.pop_back();
         }
 
-        cacheMap[key] = value;
+        auto [it, inserted] = cacheMap.insert_or_assign(key, value);
         lruList.push_front(key);
         lruMap[key] = lruList.begin();
     }
@@ -76,81 +79,8 @@ public:
     }
 };
 
-class SpatialGrid {
-private:
-    static constexpr int GRID_SIZE = 16;
-    std::vector<std::vector<uint64_t>> grid;
-    int minX, minY, minZ;
-    int maxX, maxY, maxZ;
-
-public:
-    void update(const std::unordered_set<uint64_t>& positions) {
-        if (positions.empty()) {
-            grid.clear();
-            return;
-        }
-
-        minX = minY = minZ = std::numeric_limits<int>::max();
-        maxX = maxY = maxZ = std::numeric_limits<int>::min();
-
-        for (uint64_t pos : positions) {
-            int x = static_cast<int>((pos >> 38) & 0x3FFFFFF);
-            int y = static_cast<int>((pos >> 26) & 0xFFF);
-            int z = static_cast<int>(pos & 0x3FFFFFF);
-
-            minX = std::min(minX, x);
-            minY = std::min(minY, y);
-            minZ = std::min(minZ, z);
-            maxX = std::max(maxX, x);
-            maxY = std::max(maxY, y);
-            maxZ = std::max(maxZ, z);
-        }
-
-        int gridXSize = (maxX - minX) / GRID_SIZE + 1;
-        int gridYSize = (maxY - minY) / GRID_SIZE + 1;
-        int gridZSize = (maxZ - minZ) / GRID_SIZE + 1;
-        grid.resize(gridXSize * gridYSize * gridZSize);
-
-        for (uint64_t pos : positions) {
-            int x = static_cast<int>((pos >> 38) & 0x3FFFFFF);
-            int y = static_cast<int>((pos >> 26) & 0xFFF);
-            int z = static_cast<int>(pos & 0x3FFFFFF);
-
-            int gridX = (x - minX) / GRID_SIZE;
-            int gridY = (y - minY) / GRID_SIZE;
-            int gridZ = (z - minZ) / GRID_SIZE;
-
-            int index = gridX + gridY * gridXSize + gridZ * gridXSize * gridYSize;
-            grid[index].push_back(pos);
-        }
-    }
-
-    bool checkBlock(int x, int y, int z) const {
-        if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) {
-            return false;
-        }
-
-        int gridX = (x - minX) / GRID_SIZE;
-        int gridY = (y - minY) / GRID_SIZE;
-        int gridZ = (z - minZ) / GRID_SIZE;
-
-        int gridXSize = (maxX - minX) / GRID_SIZE + 1;
-        int gridYSize = (maxY - minY) / GRID_SIZE + 1;
-
-        int index = gridX + gridY * gridXSize + gridZ * gridXSize * gridYSize;
-
-        uint64_t pos = (static_cast<uint64_t>(x) & 0x3FFFFFF) << 38 |
-                      (static_cast<uint64_t>(y) & 0xFFF) << 26 |
-                      (static_cast<uint64_t>(z) & 0x3FFFFFF);
-
-        const auto& cell = grid[index];
-        return std::find(cell.begin(), cell.end(), pos) != cell.end();
-    }
-};
-
 std::unordered_set<uint64_t> blockPositions;
 VisibilityCache visibilityCache(MAX_CACHE_SIZE);
-SpatialGrid spatialGrid;
 
 bool checkVisibilityDDA(double fromX, double fromY, double fromZ,
                        double toX, double toY, double toZ) {
@@ -170,16 +100,16 @@ bool checkVisibilityDDA(double fromX, double fromY, double fromZ,
     const int stepY = vy >= 0 ? 1 : -1;
     const int stepZ = vz >= 0 ? 1 : -1;
 
-    const double tDeltaX = std::abs(1.0 / vx);
-    const double tDeltaY = std::abs(1.0 / vy);
-    const double tDeltaZ = std::abs(1.0 / vz);
+    const double tDeltaX = std::abs(vx) > 1e-8 ? std::abs(1.0 / vx) : std::numeric_limits<double>::max();
+    const double tDeltaY = std::abs(vy) > 1e-8 ? std::abs(1.0 / vy) : std::numeric_limits<double>::max();
+    const double tDeltaZ = std::abs(vz) > 1e-8 ? std::abs(1.0 / vz) : std::numeric_limits<double>::max();
 
     double tMaxX = vx != 0 ? (stepX > 0 ? std::ceil(fromX) - fromX : fromX - std::floor(fromX)) / std::abs(vx)
-                           : std::numeric_limits<double>::max();
+                          : std::numeric_limits<double>::max();
     double tMaxY = vy != 0 ? (stepY > 0 ? std::ceil(fromY) - fromY : fromY - std::floor(fromY)) / std::abs(vy)
-                           : std::numeric_limits<double>::max();
+                          : std::numeric_limits<double>::max();
     double tMaxZ = vz != 0 ? (stepZ > 0 ? std::ceil(fromZ) - fromZ : fromZ - std::floor(fromZ)) / std::abs(vz)
-                           : std::numeric_limits<double>::max();
+                          : std::numeric_limits<double>::max();
 
     const int targetX = static_cast<int>(std::floor(toX));
     const int targetY = static_cast<int>(std::floor(toY));
@@ -211,23 +141,23 @@ bool checkVisibilityDDA(double fromX, double fromY, double fromZ,
             return false;
         }
 
-        if (spatialGrid.checkBlock(ix, iy, iz)) {
+        uint64_t currentPos = (static_cast<uint64_t>(ix) & 0x3FFFFFF) << 38 |
+                             (static_cast<uint64_t>(iy) & 0xFFF) << 26 |
+                             (static_cast<uint64_t>(iz) & 0x3FFFFFF);
+
+        if (blockPositions.find(currentPos) != blockPositions.end()) {
             if (++blocksPassed > MAX_BLOCKS_PASSED) {
                 return false;
             }
         }
 
-        const bool xMin = (tMaxX <= tMaxY) && (tMaxX <= tMaxZ);
-        const bool yMin = (tMaxY <= tMaxX) && (tMaxY <= tMaxZ);
-        const bool zMin = (tMaxZ <= tMaxX) && (tMaxZ <= tMaxY);
-
-        if (xMin) {
+        if (tMaxX <= tMaxY && tMaxX <= tMaxZ) {
             x += stepX;
             tMaxX += tDeltaX;
-        } else if (yMin) {
+        } else if (tMaxY <= tMaxZ) {
             y += stepY;
             tMaxY += tDeltaY;
-        } else if (zMin) {
+        } else {
             z += stepZ;
             tMaxZ += tDeltaZ;
         }
@@ -238,11 +168,17 @@ extern "C" {
 
 JNIEXPORT void JNICALL Java_com_vbuser_particulate_render_NativeBlockRenderer_updateMap(
     JNIEnv* env, jclass, jlongArray positions) {
-    jsize len = env->GetArrayLength(positions);
-    void* arr = env->GetPrimitiveArrayCritical(positions, nullptr);
-    if (!arr) return;
+    if (!positions) return;
 
-    jlong* elements = static_cast<jlong*>(arr);
+    jsize len = env->GetArrayLength(positions);
+    if (len <= 0) {
+        blockPositions.clear();
+        return;
+    }
+
+    jlong* elements = env->GetLongArrayElements(positions, nullptr);
+    if (!elements) return;
+
     blockPositions.clear();
     blockPositions.reserve(len);
 
@@ -250,8 +186,7 @@ JNIEXPORT void JNICALL Java_com_vbuser_particulate_render_NativeBlockRenderer_up
         blockPositions.insert(static_cast<uint64_t>(elements[i]));
     }
 
-    env->ReleasePrimitiveArrayCritical(positions, arr, JNI_ABORT);
-    spatialGrid.update(blockPositions);
+    env->ReleaseLongArrayElements(positions, elements, JNI_ABORT);
 }
 
 JNIEXPORT void JNICALL Java_com_vbuser_particulate_render_NativeBlockRenderer_clearVisibilityCache(
@@ -264,14 +199,14 @@ JNIEXPORT jboolean JNICALL Java_com_vbuser_particulate_render_NativeBlockRendere
     jdouble fromX, jdouble fromY, jdouble fromZ,
     jdouble toX, jdouble toY, jdouble toZ) {
 
-    VisibilityCache::Key key = {
+    VisibilityCache::Key key = {{
         static_cast<int32_t>(fromX * 1000),
         static_cast<int32_t>(fromY * 1000),
         static_cast<int32_t>(fromZ * 1000),
         static_cast<int32_t>(toX * 1000),
         static_cast<int32_t>(toY * 1000),
         static_cast<int32_t>(toZ * 1000)
-    };
+    }};
 
     bool result;
     if (visibilityCache.get(key, result)) {
